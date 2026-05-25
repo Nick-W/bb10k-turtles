@@ -359,12 +359,20 @@ const MILE_M = 1609.344;
 
 /* ---------------- config / persistence ---------------- */
 const CFG_KEY = "bb10k-turtle-cfg-v1";
+const TOL_MIGRATION = 2;   // bump to force the on-track tolerance onto already-used devices
 const DEFAULT_CFG = {
   startTime:"09:22:20", specialTime:"11:25:00", finishTime:"11:40:00",
   tol:15, sim:false, simTime:"09:22:20", routeText:""
 };
 let cfg = loadCfg();
-function loadCfg(){ try{ return Object.assign({}, DEFAULT_CFG, JSON.parse(localStorage.getItem(CFG_KEY)||"{}")); }catch(e){ return Object.assign({},DEFAULT_CFG);} }
+function loadCfg(){
+  let saved={};
+  try{ saved=JSON.parse(localStorage.getItem(CFG_KEY)||"{}")||{}; }catch(e){ saved={}; }
+  const c=Object.assign({}, DEFAULT_CFG, saved);
+  // one-time override: reset tolerance to the current default on devices that saved an older value
+  if(saved.tolv!==TOL_MIGRATION){ c.tol=DEFAULT_CFG.tol; c.tolv=TOL_MIGRATION; try{ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }catch(e){} }
+  return c;
+}
 function saveCfg(){ try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){} }
 
 /* ---------------- time helpers ---------------- */
