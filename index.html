@@ -336,41 +336,45 @@ const BUILTIN_ROUTE = [
   [40.009509,-105.267096]
 ];
 const BUILTIN_MARKERS = [
-  {label:"Start Line: 30th and Pearl", km:0, type:"start", lat:40.022940, lng:-105.253642},
-  {label:"1 Km", km:1, type:"km", lat:40.029033, lng:-105.258006},
-  {label:"1 Mile", km:1.6093, type:"mile", lat:40.023661, lng:-105.258435},
-  {label:"2 Km", km:2, type:"km", lat:40.023776, lng:-105.261949},
-  {label:"3 Km", km:3, type:"km", lat:40.031410, lng:-105.263218},
-  {label:"2 Miles", km:3.2187, type:"mile", lat:40.032494, lng:-105.263218},
-  {label:"4 Km", km:4, type:"km", lat:40.033472, lng:-105.269140},
-  {label:"3 Miles", km:4.828, type:"mile", lat:40.031977, lng:-105.272670},
-  {label:"5 Km", km:5, type:"km", lat:40.031328, lng:-105.272681},
-  {label:"6 Km", km:6, type:"km", lat:40.027261, lng:-105.280309},
-  {label:"4 Miles", km:6.4374, type:"mile", lat:40.025002, lng:-105.280577},
-  {label:"7 Km", km:7, type:"km", lat:40.019300, lng:-105.278420},
-  {label:"8 Km", km:8, type:"km", lat:40.019111, lng:-105.268883},
-  {label:"5 Miles", km:8.0467, type:"mile", lat:40.019185, lng:-105.268475},
-  {label:"9 Km", km:9, type:"km", lat:40.014896, lng:-105.263110},
-  {label:"6 Miles", km:9.6561, type:"mile", lat:40.010327, lng:-105.264548},
-  {label:"Finish Line", km:10, type:"finish", lat:40.009616, lng:-105.266868}
+  {label:"Start Line: 30th and Pearl", km:0, type:"start", lat:40.022940, lng:-105.253642, t:"09:26:30"},
+  {label:"1 Km", km:1, type:"km", lat:40.029033, lng:-105.258006, t:"09:39:53"},
+  {label:"1 Mile", km:1.6093, type:"mile", lat:40.023661, lng:-105.258435, t:"09:48:18"},
+  {label:"2 Km", km:2, type:"km", lat:40.023776, lng:-105.261949, t:"09:53:17"},
+  {label:"3 Km", km:3, type:"km", lat:40.031410, lng:-105.263218, t:"10:06:40"},
+  {label:"2 Miles", km:3.2187, type:"mile", lat:40.032494, lng:-105.263218, t:"10:10:07"},
+  {label:"4 Km", km:4, type:"km", lat:40.033472, lng:-105.269140, t:"10:20:03"},
+  {label:"3 Miles", km:4.828, type:"mile", lat:40.031977, lng:-105.272670, t:"10:31:55"},
+  {label:"5 Km", km:5, type:"km", lat:40.031328, lng:-105.272681, t:"10:33:27"},
+  {label:"6 Km", km:6, type:"km", lat:40.027261, lng:-105.280309, t:"10:46:50"},
+  {label:"4 Miles", km:6.4374, type:"mile", lat:40.025002, lng:-105.280577, t:"10:53:43"},
+  {label:"7 Km", km:7, type:"km", lat:40.019300, lng:-105.278420, t:"11:00:13"},
+  {label:"8 Km", km:8, type:"km", lat:40.019111, lng:-105.268883, t:"11:13:37"},
+  {label:"5 Miles", km:8.0467, type:"mile", lat:40.019185, lng:-105.268475, t:"11:15:32"},
+  {label:"9 Km", km:9, type:"km", lat:40.014896, lng:-105.263110, t:"11:27:00"},
+  {label:"6 Miles", km:9.6561, type:"mile", lat:40.010327, lng:-105.264548, t:"11:37:20"},
+  {label:"Finish Line", km:10, type:"finish", lat:40.009616, lng:-105.266868, t:"11:42:00"}
 ];
-const SPECIAL_KM = 9;                    // Arapahoe & Folsom checkpoint = the 9 km mark (11:25)
+const SPECIAL_KM = 9;                    // Arapahoe & Folsom checkpoint = the 9 km mark (11:27)
 const MILE_M = 1609.344;
 
 /* ---------------- config / persistence ---------------- */
 const CFG_KEY = "bb10k-turtle-cfg-v1";
-const TOL_MIGRATION = 2;   // bump to force the on-track tolerance onto already-used devices
+const CFG_MIGRATION = 3;   // bump to force updated schedule/tolerance onto already-used devices
 const DEFAULT_CFG = {
-  startTime:"09:22:20", specialTime:"11:25:00", finishTime:"11:40:00",
-  tol:15, sim:false, simTime:"09:22:20", routeText:""
+  startTime:"09:26:30", specialTime:"11:27:00", finishTime:"11:42:00",
+  tol:15, sim:false, simTime:"09:26:30", routeText:""
 };
 let cfg = loadCfg();
 function loadCfg(){
   let saved={};
   try{ saved=JSON.parse(localStorage.getItem(CFG_KEY)||"{}")||{}; }catch(e){ saved={}; }
   const c=Object.assign({}, DEFAULT_CFG, saved);
-  // one-time override: reset tolerance to the current default on devices that saved an older value
-  if(saved.tolv!==TOL_MIGRATION){ c.tol=DEFAULT_CFG.tol; c.tolv=TOL_MIGRATION; try{ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }catch(e){} }
+  // one-time override: reset schedule + tolerance to current defaults on devices that saved older values
+  if(saved.tolv!==CFG_MIGRATION){
+    c.startTime=DEFAULT_CFG.startTime; c.specialTime=DEFAULT_CFG.specialTime; c.finishTime=DEFAULT_CFG.finishTime;
+    c.tol=DEFAULT_CFG.tol; c.simTime=DEFAULT_CFG.simTime; c.tolv=CFG_MIGRATION;
+    try{ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }catch(e){}
+  }
   return c;
 }
 function saveCfg(){ try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){} }
@@ -406,7 +410,7 @@ function buildGeometry(route, markers){
   // checkpoints: exact official placements if provided, else proportional fallback
   let cps;
   if(markers && markers.length){
-    cps = markers.map(m=>({ name:m.label, km:m.km, type:m.type, latlng:[m.lat,m.lng], arc:projectRaw(g,m.lat,m.lng).distM }));
+    cps = markers.map(m=>({ name:m.label, km:m.km, type:m.type, latlng:[m.lat,m.lng], arc:projectRaw(g,m.lat,m.lng).distM, t:m.t }));
   } else {
     cps=[{name:"START",km:0,type:"start"}];
     for(let k=1;k<=9;k++) cps.push({name:"KM "+k,km:k,type:"km"});
@@ -422,6 +426,11 @@ function buildGeometry(route, markers){
   for(const c of cps){ if(c.km>1e-6 && c.km<9.9999 && c.km>km[km.length-1]+1e-6){ km.push(c.km); arc.push(Math.max(c.arc, arc[arc.length-1])); } }
   km.push(10); arc.push(Math.max(L, arc[arc.length-1]+1));
   g.calKm=km; g.calArc=arc;
+  // explicit per-checkpoint schedule knots (official cutoff chart times), monotonic in time
+  const sk=[], st=[];
+  for(const c of cps){ const ts=c.t!=null?hmsToSec(c.t):null;
+    if(ts!=null && (!sk.length || c.km>sk[sk.length-1]+1e-9)){ sk.push(c.km); st.push(Math.max(ts, st.length?st[st.length-1]:ts)); } }
+  if(sk.length>=2){ g.schedKm=sk; g.schedT=st; }
   g.checkpoints=cps;
   g.specialArc=kmToArc(g,SPECIAL_KM);
   return g;
@@ -466,16 +475,28 @@ function projectToCourse(g, lat, lng){
   return { distM:pr.distM, nominalKm:arcToKm(g,pr.distM), perpM:pr.perpM, latlng:pointAtDist(g,pr.distM) };
 }
 
-/* ---------------- schedule (anchors: 0 km->start, 9 km/Arapahoe&Folsom->special, 10 km->finish) ---------------- */
+/* ---------------- schedule ----------------
+   Built-in course uses the official cutoff-walker chart's exact per-checkpoint
+   times (km and mile rows follow slightly different paces, so no single
+   interpolation reproduces them). Falls back to a 3-anchor model (start /
+   Arapahoe&Folsom@9km / finish) for a custom pasted route or manual overrides. */
 function anchors(){ const T0=hmsToSec(cfg.startTime),Ts=hmsToSec(cfg.specialTime),Tf=hmsToSec(cfg.finishTime); return {T0,Ts,Tf,specNom:SPECIAL_KM}; }
-function schedTimeAtKm(km){ const {T0,Ts,Tf}=anchors();
+function useChart(){ return !!(G && G.schedKm) &&
+  cfg.startTime===DEFAULT_CFG.startTime && cfg.specialTime===DEFAULT_CFG.specialTime && cfg.finishTime===DEFAULT_CFG.finishTime; }
+function schedTimeAtKm(km){
+  if(useChart()) return interp(G.schedKm, G.schedT, km);
+  const {T0,Ts,Tf}=anchors();
   if(km<=SPECIAL_KM) return T0 + (km/SPECIAL_KM)*(Ts-T0);
   return Ts + ((km-SPECIAL_KM)/(10-SPECIAL_KM))*(Tf-Ts); }
-function ghostKmAtTime(t){ const {T0,Ts,Tf}=anchors();
+function ghostKmAtTime(t){
+  if(useChart()){ const T=G.schedT; if(t<=T[0]) return 0; if(t>=T[T.length-1]) return 10; return interp(T, G.schedKm, t); }
+  const {T0,Ts,Tf}=anchors();
   if(t<=T0) return 0; if(t>=Tf) return 10;
   if(t<=Ts) return SPECIAL_KM*(t-T0)/(Ts-T0);
   return SPECIAL_KM + (10-SPECIAL_KM)*(t-Ts)/(Tf-Ts); }
-function paceAtKm(km){ const {T0,Ts,Tf}=anchors();
+function paceAtKm(km){
+  if(useChart()){ const a=Math.max(0,km-0.5), b=Math.min(10,km+0.5); return (schedTimeAtKm(b)-schedTimeAtKm(a))/(b-a); }
+  const {T0,Ts,Tf}=anchors();
   if(km<=SPECIAL_KM) return (Ts-T0)/SPECIAL_KM;
   return (Tf-Ts)/(10-SPECIAL_KM); }
 function buildCheckpoints(g){ return g.checkpoints; }
