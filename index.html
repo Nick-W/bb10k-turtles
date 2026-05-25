@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10623f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Turtle Pace">
+<title>BB10K Turtle Pacer</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+
+<style>
+  :root{
+    --behind:#d8232a; --ontrack:#1a9e4b; --ahead:#1769c9;
+    --bg:#0e1116; --panel:#171c24; --panel2:#1f2630; --line:#2b3440;
+    --text:#f2f5f8; --muted:#9aa7b4; --accent:#10623f;
+    --km:#e8762a; --mile:#1f6f9e; --special:#b13bbf;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text);
+    display:flex; flex-direction:column; height:100dvh; overflow:hidden;
+    -webkit-text-size-adjust:100%;
+  }
+  /* top bar */
+  #topbar{
+    flex:0 0 auto; display:flex; align-items:center; gap:10px;
+    padding:calc(8px + var(--safe-t)) 14px 8px; background:var(--panel);
+    border-bottom:1px solid var(--line);
+  }
+  #topbar .clock{font-variant-numeric:tabular-nums; font-weight:700; font-size:18px; letter-spacing:.5px;}
+  #topbar .title{font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px;}
+  #topbar .spacer{flex:1;}
+  .badge{font-size:11px; font-weight:700; padding:4px 8px; border-radius:999px; white-space:nowrap;}
+  .badge.gps-off{background:#3a2326; color:#ff9b9b;}
+  .badge.gps-ok{background:#16321f; color:#7fe0a3;}
+  .badge.gps-weak{background:#3a3320; color:#ffe08a;}
+  .badge.sim{background:#22304a; color:#9ec6ff;}
+
+  /* views */
+  #views{flex:1 1 auto; position:relative; overflow:hidden;}
+  .view{position:absolute; inset:0; overflow:auto; -webkit-overflow-scrolling:touch; display:none;}
+  .view.active{display:block;}
+  #view-map.active{display:block;}
+
+  /* PACE view */
+  #statusCard{
+    margin:12px; border-radius:18px; padding:22px 18px; text-align:center;
+    background:var(--panel2); transition:background .25s;
+  }
+  #statusCard.behind{background:var(--behind);}
+  #statusCard.ontrack{background:var(--ontrack);}
+  #statusCard.ahead{background:var(--ahead);}
+  #statusCard.idle{background:var(--panel2);}
+  #statusWord{font-size:30px; font-weight:800; letter-spacing:2px; text-transform:uppercase;}
+  #statusBig{font-size:64px; font-weight:800; line-height:1; margin:6px 0 2px; font-variant-numeric:tabular-nums;}
+  #statusSub{font-size:16px; opacity:.95; min-height:22px;}
+  #statusDist{font-size:14px; opacity:.85; margin-top:6px;}
+
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:0 12px 12px;}
+  .tile{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px;}
+  .tile .k{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px;}
+  .tile .v{font-size:20px; font-weight:700; margin-top:3px; font-variant-numeric:tabular-nums;}
+  .tile .v small{font-size:12px; color:var(--muted); font-weight:600;}
+  .full{grid-column:1 / -1;}
+
+  .cpnext{display:flex; align-items:center; gap:12px;}
+  .cpdot{width:14px;height:14px;border-radius:50%;flex:0 0 auto;}
+  .warn{margin:0 12px 12px; background:#3a2326; color:#ffb3b3; border:1px solid #5a2c30;
+        border-radius:12px; padding:10px 14px; font-size:14px; display:none;}
+  .warn.show{display:block;}
+
+  #enableWrap{margin:12px; }
+  button.big{width:100%; padding:16px; font-size:18px; font-weight:800; border:none;
+    border-radius:14px; background:var(--accent); color:#fff;}
+  button.big:active{transform:scale(.99);}
+  .hint{color:var(--muted); font-size:13px; text-align:center; margin:8px 4px 0; line-height:1.4;}
+
+  /* MAP view */
+  #map{position:absolute; inset:0; background:#aab; }
+  #maptools{position:absolute; right:10px; bottom:calc(14px + var(--safe-b)); z-index:500; display:flex; flex-direction:column; gap:8px;}
+  #maptools button{width:46px;height:46px;border-radius:23px;border:none;background:var(--panel);
+    color:var(--text); font-size:18px; box-shadow:0 2px 8px rgba(0,0,0,.4);}
+  #maptools button.on{background:var(--accent);}
+  #mapinfo{position:absolute; left:10px; top:10px; z-index:500; background:rgba(14,17,22,.86);
+    border:1px solid var(--line); border-radius:12px; padding:8px 11px; font-size:13px; max-width:62%;}
+  #mapinfo .row{display:flex; gap:8px; align-items:center; margin:2px 0;}
+  #mapinfo b{font-variant-numeric:tabular-nums;}
+  .legdot{width:11px;height:11px;border-radius:3px;display:inline-block;}
+  .leaflet-div-icon{background:transparent;border:none;}
+  .ghost-ic{font-size:26px; filter:drop-shadow(0 1px 2px rgba(0,0,0,.6)); transform:translate(-2px,-3px);}
+  .you-ic{width:20px;height:20px;border-radius:50%;background:#1769c9;border:3px solid #fff;
+    box-shadow:0 0 0 2px rgba(23,105,201,.4);}
+
+  /* SCHEDULE view */
+  .sched{margin:12px;}
+  .sched h2,.settings h2{font-size:14px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:4px 2px 10px;}
+  table.cp{width:100%; border-collapse:collapse; background:var(--panel); border-radius:12px; overflow:hidden;}
+  table.cp td{padding:11px 12px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums;}
+  table.cp tr:last-child td{border-bottom:none;}
+  table.cp .nm{font-weight:700; display:flex; align-items:center; gap:9px;}
+  table.cp .tm{text-align:right; font-weight:700;}
+  table.cp .ds{color:var(--muted); font-size:12px; text-align:right; width:62px;}
+  table.cp tr.next{background:#16321f;}
+  table.cp tr.passed td{opacity:.5;}
+  .pill{font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;color:#fff;}
+
+  /* SETTINGS view */
+  .settings{margin:12px; padding-bottom:30px;}
+  .field{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:10px;}
+  .field label{display:block; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; margin-bottom:7px;}
+  .field input[type=time], .field input[type=number], .field textarea{
+    width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    border-radius:9px; padding:11px; font-size:17px; font-variant-numeric:tabular-nums;}
+  .field textarea{font-size:12px; min-height:90px; font-family:ui-monospace,Menlo,monospace;}
+  .row2{display:flex; gap:10px;}
+  .row2>div{flex:1;}
+  .toggle{display:flex; align-items:center; justify-content:space-between;}
+  .switch{position:relative; width:52px; height:30px;}
+  .switch input{opacity:0; width:0; height:0;}
+  .slider{position:absolute; inset:0; background:var(--line); border-radius:30px; transition:.2s;}
+  .slider:before{content:"";position:absolute; width:24px;height:24px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s;}
+  .switch input:checked + .slider{background:var(--accent);}
+  .switch input:checked + .slider:before{transform:translateX(22px);}
+  .btnrow{display:flex; gap:10px; margin-top:6px;}
+  button.sec{flex:1; padding:13px; border:1px solid var(--line); background:var(--panel2); color:var(--text);
+    border-radius:11px; font-weight:700; font-size:15px;}
+  details summary{cursor:pointer; color:var(--muted); font-size:13px; padding:6px 2px;}
+  .note{color:var(--muted); font-size:12px; line-height:1.5; margin:6px 2px;}
+
+  /* bottom nav */
+  #nav{flex:0 0 auto; display:flex; background:var(--panel); border-top:1px solid var(--line);
+    padding-bottom:var(--safe-b);}
+  #nav button{flex:1; background:none; border:none; color:var(--muted); padding:9px 0 8px;
+    font-size:11px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:3px;}
+  #nav button .ic{font-size:21px; line-height:1;}
+  #nav button.active{color:var(--text);}
+  #nav button.active .ic{filter:drop-shadow(0 0 6px rgba(255,255,255,.25));}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div>
+    <div class="title">BB10K Turtles</div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+  <div class="spacer"></div>
+  <span class="badge sim" id="simBadge" style="display:none">SIM</span>
+  <span class="badge gps-off" id="gpsBadge">GPS off</span>
+</div>
+
+<div id="views">
+
+  <!-- ============ PACE ============ -->
+  <section class="view active" id="view-pace">
+    <div id="enableWrap">
+      <button class="big" id="enableGps">Enable GPS &amp; keep screen awake</button>
+      <div class="hint" id="enableHint">Tap to start location tracking. iOS needs this on an HTTPS page; keep the screen on during the race.</div>
+    </div>
+
+    <div id="statusCard" class="idle">
+      <div id="statusWord">Waiting</div>
+      <div id="statusBig">--:--</div>
+      <div id="statusSub">Enable GPS to compare your position to the pace.</div>
+      <div id="statusDist"></div>
+    </div>
+
+    <div class="warn" id="offcourse"></div>
+
+    <div class="grid">
+      <div class="tile">
+        <div class="k">You are at</div>
+        <div class="v" id="youKm">--</div>
+      </div>
+      <div class="tile">
+        <div class="k">Team should be at</div>
+        <div class="v" id="ghostKm">--</div>
+      </div>
+      <div class="tile full">
+        <div class="k">Next checkpoint</div>
+        <div class="v cpnext"><span class="cpdot" id="nextDot"></span><span id="nextCp">--</span></div>
+      </div>
+      <div class="tile">
+        <div class="k">Target pace now</div>
+        <div class="v" id="tgtPace">--</div>
+      </div>
+      <div class="tile">
+        <div class="k">Your speed</div>
+        <div class="v" id="yourSpeed">--</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MAP ============ -->
+  <section class="view" id="view-map">
+    <div id="map"></div>
+    <div id="mapinfo">
+      <div class="row"><span>🐢</span><span>Team should be at <b id="m_ghost">--</b></span></div>
+      <div class="row"><span class="legdot" style="background:#1769c9;border-radius:50%"></span><span>You: <b id="m_you">--</b></span></div>
+      <div class="row" id="m_statusrow"><span class="legdot" id="m_statusdot"></span><b id="m_status">--</b></div>
+    </div>
+    <div id="maptools">
+      <button id="recenter" title="Recenter">◎</button>
+      <button id="followBtn" class="on" title="Follow me">🧭</button>
+    </div>
+  </section>
+
+  <!-- ============ SCHEDULE ============ -->
+  <section class="view" id="view-sched">
+    <div class="sched">
+      <h2>Checkpoint schedule</h2>
+      <table class="cp"><tbody id="schedBody"></tbody></table>
+      <div class="note" id="schedNote"></div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" id="view-set">
+    <div class="settings">
+      <h2>Race times</h2>
+      <div class="field">
+        <label>Start time (gun)</label>
+        <input type="time" step="1" id="cfgStart">
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>Arapahoe &amp; Folsom</label>
+          <input type="time" step="1" id="cfgSpecial">
+        </div>
+        <div class="field">
+          <label>Finish</label>
+          <input type="time" step="1" id="cfgFinish">
+        </div>
+      </div>
+      <div class="field">
+        <label>On-track tolerance (± seconds)</label>
+        <input type="number" id="cfgTol" min="5" max="600" step="5">
+      </div>
+
+      <h2>Testing</h2>
+      <div class="field toggle">
+        <div><label style="margin:0">Simulate time</label><div class="note" style="margin:4px 0 0">Drive the pace from a fake clock to rehearse anywhere.</div></div>
+        <label class="switch"><input type="checkbox" id="cfgSim"><span class="slider"></span></label>
+      </div>
+      <div class="field" id="simTimeField" style="display:none">
+        <label>Simulated clock</label>
+        <input type="time" step="1" id="cfgSimTime">
+        <div class="btnrow">
+          <button class="sec" id="simStartBtn">Jump to start</button>
+          <button class="sec" id="simRunBtn">Run ▶</button>
+        </div>
+      </div>
+
+      <h2>Status</h2>
+      <div class="field note" id="statusInfo"></div>
+
+      <details>
+        <summary>Advanced: replace course (GeoJSON / lat,lng list)</summary>
+        <div class="field" style="margin-top:10px">
+          <label>Route coordinates</label>
+          <textarea id="cfgRoute" placeholder="Paste a GeoJSON LineString, OR lines of: lat,lng"></textarea>
+          <div class="note">Mark the Arapahoe &amp; Folsom point by adding <code>#AF</code> at the end of its line, e.g. <code>40.0143,-105.2586 #AF</code>. Leave blank to use the built-in course.</div>
+          <div class="btnrow">
+            <button class="sec" id="routeApply">Apply route</button>
+            <button class="sec" id="routeReset">Reset to built-in</button>
+          </div>
+        </div>
+      </details>
+
+      <div class="btnrow" style="margin-top:14px">
+        <button class="sec" id="resetCfg">Reset all settings</button>
+      </div>
+      <div class="note">Settings are saved on this device only. Course markers are placed by distance along the route; the digitized course is approximate, so the GPS comparison is most reliable as a relative behind/ahead reading.</div>
+    </div>
+  </section>
+
+</div>
+
+<nav id="nav">
+  <button data-v="pace" class="active"><span class="ic">⏱️</span>Pace</button>
+  <button data-v="map"><span class="ic">🗺️</span>Map</button>
+  <button data-v="sched"><span class="ic">📋</span>Schedule</button>
+  <button data-v="set"><span class="ic">⚙️</span>Settings</button>
+</nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+"use strict";
+/* ============================================================
+   BB10K Turtle Pacer  — all-in-one volunteer pacing tool
+   ============================================================ */
+
+/* ---- Built-in course: traced from the official BB10K map ----
+   Each point is [lat, lng]. The Arapahoe & Folsom intersection
+   (the special checkpoint) is flagged below. The course is also
+   editable in Settings > Advanced. */
+const BUILTIN_ROUTE = [
+  [40.0205, -105.2538], // START — 30th St
+  [40.0262, -105.2538], // 30th & Valmont
+  [40.0262, -105.2580], // 28th & Valmont
+  [40.0224, -105.2580], // 28th & Mapleton
+  [40.0224, -105.2593], // 27th & Mapleton
+  [40.0203, -105.2593], // 27th & Spruce
+  [40.0203, -105.2586], // Folsom & Spruce
+  [40.0293, -105.2586], // Folsom & Hawthorn
+  [40.0293, -105.2645], // 23rd & Hawthorn
+  [40.0284, -105.2666], // Vista / Glenwood
+  [40.0282, -105.2697], // Glenwood & 19th
+  [40.0249, -105.2697], // 19th & Balsam
+  [40.0238, -105.2697], // 19th & Cedar
+  [40.0238, -105.2800], // Cedar & Broadway
+  [40.0203, -105.2792], // Broadway & Spruce
+  [40.0203, -105.2773], // 13th & Spruce
+  [40.0203, -105.2747], // 15th & Spruce
+  [40.0190, -105.2734], // 16th & Pearl
+  [40.0177, -105.2734], // 16th & Walnut
+  [40.0177, -105.2586], // Folsom & Walnut
+  [40.0143, -105.2586], // Folsom & Arapahoe  <-- SPECIAL
+  [40.0108, -105.2586], // Folsom & Colorado
+  [40.0101, -105.2525], // stadium approach
+  [40.0099, -105.2505], // FINISH — Folsom Field
+];
+const BUILTIN_SPECIAL_INDEX = 20;
+const COURSE_NOMINAL_M = 10000;          // official BB10K = 10 km
+const MILE_M = 1609.344;
+
+/* ---------------- config / persistence ---------------- */
+const CFG_KEY = "bb10k-turtle-cfg-v1";
+const DEFAULT_CFG = {
+  startTime:"09:22:20", specialTime:"11:25:00", finishTime:"11:40:00",
+  tol:45, sim:false, simTime:"09:22:20", routeText:""
+};
+let cfg = loadCfg();
+function loadCfg(){ try{ return Object.assign({}, DEFAULT_CFG, JSON.parse(localStorage.getItem(CFG_KEY)||"{}")); }catch(e){ return Object.assign({},DEFAULT_CFG);} }
+function saveCfg(){ try{ localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }catch(e){} }
+
+/* ---------------- time helpers ---------------- */
+const pad=n=>String(n).padStart(2,"0");
+function hmsToSec(s){ const m=/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec((s||"").trim()); if(!m) return null; return (+m[1])*3600+(+m[2])*60+(+(m[3]||0)); }
+function secToClock(sec){ sec=Math.round(sec); sec=((sec%86400)+86400)%86400; return pad(sec/3600|0)+":"+pad((sec%3600)/60|0)+":"+pad(sec%60); }
+function secToClockHM(sec){ sec=Math.round(sec); sec=((sec%86400)+86400)%86400; return pad(sec/3600|0)+":"+pad((sec%3600)/60|0); }
+function fmtMS(sec){ sec=Math.abs(Math.round(sec)); const m=sec/60|0, s=sec%60; return m+":"+pad(s); }
+function deviceSecOfDay(){ const d=new Date(); return d.getHours()*3600+d.getMinutes()*60+d.getSeconds()+d.getMilliseconds()/1000; }
+
+/* simulation clock */
+let simRunning=false, simBaseSec=0, simBaseWall=0;
+function nowSec(){
+  if(!cfg.sim) return deviceSecOfDay();
+  if(simRunning) return simBaseSec + (performance.now()-simBaseWall)/1000;
+  return hmsToSec(cfg.simTime) ?? 0;
+}
+
+/* ---------------- geometry ---------------- */
+let G = null; // {pts:[[lat,lng]], xy:[[x,y]], cum:[m], L, specialIndex, specialDistM, checkpoints:[]}
+
+function buildGeometry(route, specialIndex){
+  const lat0 = route.reduce((a,p)=>a+p[0],0)/route.length;
+  const lng0 = route.reduce((a,p)=>a+p[1],0)/route.length;
+  const R=Math.PI/180, mLat=110540, mLng=111320*Math.cos(lat0*R);
+  const xy = route.map(p=>[ (p[1]-lng0)*mLng, (p[0]-lat0)*mLat ]);
+  const cum=[0];
+  for(let i=1;i<xy.length;i++){ const dx=xy[i][0]-xy[i-1][0], dy=xy[i][1]-xy[i-1][1]; cum.push(cum[i-1]+Math.hypot(dx,dy)); }
+  const L=cum[cum.length-1];
+  const specialDistM = cum[specialIndex];
+  const g={pts:route, xy, cum, L, lat0, lng0, mLat, mLng, specialIndex, specialDistM};
+  g.checkpoints = buildCheckpoints(g);
+  return g;
+}
+
+// distance-along (metres, on digitized line) -> [lat,lng]
+function pointAtDist(g, d){
+  d=Math.max(0,Math.min(g.L,d));
+  let i=1; while(i<g.cum.length && g.cum[i]<d) i++;
+  const a=i-1, b=Math.min(i,g.cum.length-1);
+  const seg=g.cum[b]-g.cum[a]; const t=seg>0?(d-g.cum[a])/seg:0;
+  return [ g.pts[a][0]+(g.pts[b][0]-g.pts[a][0])*t, g.pts[a][1]+(g.pts[b][1]-g.pts[a][1])*t ];
+}
+// nominal km (0..10) -> [lat,lng]  (proportional placement)
+function pointAtNominalKm(g, km){ return pointAtDist(g, km/ (COURSE_NOMINAL_M/1000) * g.L); }
+
+// project lat/lng -> {distM (on line), nominalKm, perpM, latlng}
+function projectToCourse(g, lat, lng){
+  const px=(lng-g.lng0)*g.mLng, py=(lat-g.lat0)*g.mLat;
+  let best={d2:Infinity};
+  for(let i=1;i<g.xy.length;i++){
+    const ax=g.xy[i-1][0], ay=g.xy[i-1][1], bx=g.xy[i][0], by=g.xy[i][1];
+    const dx=bx-ax, dy=by-ay, len2=dx*dx+dy*dy;
+    let t = len2>0 ? ((px-ax)*dx+(py-ay)*dy)/len2 : 0;
+    t=Math.max(0,Math.min(1,t));
+    const cx=ax+dx*t, cy=ay+dy*t;
+    const d2=(px-cx)*(px-cx)+(py-cy)*(py-cy);
+    if(d2<best.d2){ best={d2, i, t, distM:g.cum[i-1]+Math.sqrt(len2)*t}; }
+  }
+  return {
+    distM: best.distM,
+    nominalKm: best.distM/g.L * (COURSE_NOMINAL_M/1000),
+    perpM: Math.sqrt(best.d2),
+    latlng: pointAtDist(g, best.distM)
+  };
+}
+
+/* ---------------- schedule ---------------- */
+// anchors in nominal km: 0 -> T0 ; specialNomKm -> Ts ; 10 -> Tf
+function anchors(){
+  const T0=hmsToSec(cfg.startTime), Ts=hmsToSec(cfg.specialTime), Tf=hmsToSec(cfg.finishTime);
+  const specNom = G.specialDistM/G.L * (COURSE_NOMINAL_M/1000);
+  return {T0,Ts,Tf,specNom};
+}
+// nominal km -> scheduled clock seconds
+function schedTimeAtKm(km){
+  const {T0,Ts,Tf,specNom}=anchors();
+  if(km<=specNom) return T0 + (specNom>0? km/specNom:0)*(Ts-T0);
+  return Ts + (km-specNom)/((COURSE_NOMINAL_M/1000)-specNom)*(Tf-Ts);
+}
+// clock seconds -> ghost nominal km
+function ghostKmAtTime(t){
+  const {T0,Ts,Tf,specNom}=anchors();
+  const NK=COURSE_NOMINAL_M/1000;
+  if(t<=T0) return 0;
+  if(t>=Tf) return NK;
+  if(t<=Ts) return specNom*(t-T0)/(Ts-T0);
+  return specNom + (NK-specNom)*(t-Ts)/(Tf-Ts);
+}
+// local pace (sec per km) around a given nominal km — for converting distance<->time
+function paceAtKm(km){
+  const {T0,Ts,Tf,specNom}=anchors();
+  const NK=COURSE_NOMINAL_M/1000;
+  if(km<=specNom) return specNom>0?(Ts-T0)/specNom:9999;
+  return (Tf-Ts)/(NK-specNom);
+}
+
+function buildCheckpoints(g){
+  const NK=COURSE_NOMINAL_M/1000;
+  const specNom = g.specialDistM/g.L*NK;
+  const list=[];
+  list.push({name:"START", km:0, type:"start", latlng:g.pts[0]});
+  for(let k=1;k<=9;k++) list.push({name:"KM "+k, km:k, type:"km", latlng:pointAtNominalKm(g,k)});
+  for(let m=1;m<=6;m++){ const km=m*MILE_M/1000; list.push({name:"MILE "+m, km, type:"mile", latlng:pointAtNominalKm(g,km)}); }
+  list.push({name:"Arapahoe & Folsom", km:specNom, type:"special", latlng:g.pts[g.specialIndex]});
+  list.push({name:"FINISH", km:NK, type:"finish", latlng:g.pts[g.pts.length-1]});
+  list.sort((a,b)=>a.km-b.km);
+  return list;
+}
+
+const TYPE_COLOR={km:"var(--km)", mile:"var(--mile)", special:"var(--special)", start:"#1a9e4b", finish:"#111"};
+const TYPE_HEX  ={km:"#e8762a", mile:"#1f6f9e", special:"#b13bbf", start:"#1a9e4b", finish:"#111"};
+
+/* ---------------- GPS ---------------- */
+let gps=null, watchId=null, wakeLock=null;
+function gpsSupported(){ return "geolocation" in navigator; }
+
+function enableGps(){
+  if(!gpsSupported()){ setGpsBadge("off","No GPS"); alert("This browser has no Geolocation support."); return; }
+  // a single getCurrentPosition first (clear permission prompt on the user gesture)
+  navigator.geolocation.getCurrentPosition(onPos, onPosErr, {enableHighAccuracy:true, timeout:15000, maximumAge:0});
+  if(watchId==null){
+    watchId = navigator.geolocation.watchPosition(onPos, onPosErr,
+      {enableHighAccuracy:true, timeout:20000, maximumAge:1000});
+  }
+  requestWake();
+  document.getElementById("enableWrap").style.display="none";
+}
+function onPos(p){
+  gps={ lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy,
+        speed:(p.coords.speed!=null && p.coords.speed>=0)?p.coords.speed:null, ts:p.timestamp };
+  const a=gps.acc;
+  if(a!=null && a<=25) setGpsBadge("ok","GPS ±"+Math.round(a)+"m");
+  else setGpsBadge("weak","GPS ±"+Math.round(a||0)+"m");
+  render();
+}
+function onPosErr(e){
+  const msg = e.code===1? "GPS permission denied" : e.code===2? "Position unavailable" : "GPS timeout";
+  setGpsBadge("off", msg);
+  if(e.code===1){
+    document.getElementById("enableWrap").style.display="block";
+    document.getElementById("enableHint").textContent =
+      "Location was blocked. Enable location for this site in your browser settings, then tap again.";
+  }
+}
+function setGpsBadge(kind,text){
+  const b=document.getElementById("gpsBadge");
+  b.className="badge "+(kind==="ok"?"gps-ok":kind==="weak"?"gps-weak":"gps-off");
+  b.textContent=text;
+}
+async function requestWake(){
+  try{ if("wakeLock" in navigator){ wakeLock=await navigator.wakeLock.request("screen"); } }catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible" && watchId!=null) requestWake(); });
+
+/* ---------------- map ---------------- */
+let map=null, layers={}, follow=true, mapReady=false;
+function initMap(){
+  if(mapReady || typeof L==="undefined") return;
+  map=L.map("map",{zoomControl:true, attributionControl:true}).setView([40.020,-105.262],14);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {maxZoom:19, attribution:"© OpenStreetMap"}).addTo(map);
+  drawCourse();
+  map.on("dragstart",()=>{ follow=false; document.getElementById("followBtn").classList.remove("on"); });
+  mapReady=true;
+  fitCourse();
+}
+function drawCourse(){
+  if(layers.line){ layers.line.remove(); (layers.cps||[]).forEach(m=>m.remove()); }
+  layers.line=L.polyline(G.pts,{color:"#10b36a",weight:6,opacity:.9}).addTo(map);
+  layers.cps=[];
+  for(const c of G.checkpoints){
+    if(c.type==="km"||c.type==="mile"||c.type==="special"){
+      const m=L.circleMarker(c.latlng,{radius:c.type==="special"?9:6, color:"#fff", weight:2,
+        fillColor:TYPE_HEX[c.type], fillOpacity:1}).addTo(map);
+      m.bindTooltip(c.name,{direction:"top"});
+      layers.cps.push(m);
+    }
+  }
+  layers.start=L.circleMarker(G.pts[0],{radius:8,color:"#fff",weight:2,fillColor:"#1a9e4b",fillOpacity:1}).addTo(map).bindTooltip("START");
+  layers.finish=L.circleMarker(G.pts[G.pts.length-1],{radius:8,color:"#fff",weight:2,fillColor:"#111",fillOpacity:1}).addTo(map).bindTooltip("FINISH");
+  layers.cps.push(layers.start,layers.finish);
+
+  layers.ghost=L.marker(G.pts[0],{icon:L.divIcon({className:"",html:'<div class="ghost-ic">🐢</div>',iconSize:[28,28],iconAnchor:[14,20]}),zIndexOffset:1000}).addTo(map);
+  layers.you=L.marker(G.pts[0],{icon:L.divIcon({className:"",html:'<div class="you-ic"></div>',iconSize:[20,20],iconAnchor:[10,10]}),zIndexOffset:1100});
+  layers.youProj=L.circleMarker(G.pts[0],{radius:5,color:"#fff",weight:2,fillColor:"#1769c9",fillOpacity:.6});
+  layers.acc=L.circle(G.pts[0],{radius:0,color:"#1769c9",weight:1,fillColor:"#1769c9",fillOpacity:.08});
+}
+function fitCourse(){ if(map&&layers.line) map.fitBounds(layers.line.getBounds().pad(0.12)); }
+
+/* ---------------- main render ---------------- */
+function render(){
+  const t=nowSec();
+  document.getElementById("clock").textContent=secToClock(t);
+  document.getElementById("simBadge").style.display = cfg.sim? "inline-block":"none";
+
+  const {T0,Tf}=anchors();
+  const ghostKm=ghostKmAtTime(t);
+  const ghostPt=pointAtNominalKm(G,ghostKm);
+
+  // map ghost
+  if(mapReady){ layers.ghost.setLatLng(ghostPt); }
+
+  // texts that don't need GPS
+  document.getElementById("ghostKm").innerHTML = fmtKm(ghostKm);
+  document.getElementById("m_ghost").textContent = fmtKmPlain(ghostKm);
+  document.getElementById("tgtPace").innerHTML = paceStr(paceAtKm(ghostKm));
+
+  // next checkpoint (by schedule vs now)
+  const nextCp = G.checkpoints.find(c=> schedTimeAtKm(c.km) > t+0.001) || G.checkpoints[G.checkpoints.length-1];
+  const ncT=schedTimeAtKm(nextCp.km);
+  document.getElementById("nextCp").innerHTML = nextCp.name+" — <b>"+secToClock(ncT)+"</b> "+
+    (ncT>=t? "<small style='color:var(--muted)'>(in "+fmtMS(ncT-t)+")</small>":"");
+  document.getElementById("nextDot").style.background = TYPE_HEX[nextCp.type]||"#888";
+
+  // ---- GPS-derived position (whenever we have a fix, regardless of race window) ----
+  let proj=null, myKm=null;
+  const off=document.getElementById("offcourse");
+  const mStatusDot=document.getElementById("m_statusdot");
+  if(gps){
+    proj=projectToCourse(G, gps.lat, gps.lng);
+    myKm=proj.nominalKm;
+    document.getElementById("youKm").innerHTML=fmtKm(myKm);
+    document.getElementById("m_you").textContent=fmtKmPlain(myKm);
+    document.getElementById("yourSpeed").innerHTML = gps.speed!=null
+      ? (gps.speed*3.6).toFixed(1)+" <small>km/h</small>" : "<small>—</small>";
+    if(mapReady){
+      if(!map.hasLayer(layers.you)){ layers.you.addTo(map); layers.youProj.addTo(map); layers.acc.addTo(map); }
+      layers.you.setLatLng([gps.lat,gps.lng]);
+      layers.youProj.setLatLng(proj.latlng);
+      layers.acc.setLatLng([gps.lat,gps.lng]).setRadius(gps.acc||0);
+      if(follow) map.panTo([gps.lat,gps.lng],{animate:true,duration:.5});
+    }
+    if(proj.perpM>80){ off.classList.add("show"); off.textContent="⚠ You are "+Math.round(proj.perpM)+" m from the marked course — readings may be off."; }
+    else off.classList.remove("show");
+  } else {
+    document.getElementById("youKm").innerHTML="<small>—</small>";
+    document.getElementById("m_you").textContent="—";
+    document.getElementById("yourSpeed").innerHTML="<small>—</small>";
+    off.classList.remove("show");
+  }
+
+  // ---- status card ----
+  const card=document.getElementById("statusCard");
+  const word=document.getElementById("statusWord"), big=document.getElementById("statusBig"),
+        sub=document.getElementById("statusSub"), dist=document.getElementById("statusDist");
+  const mStatus=document.getElementById("m_status");
+
+  if(!gps){
+    card.className="idle"; word.textContent="Tracking off";
+    big.textContent="🐢 "+fmtKmPlain(ghostKm); sub.textContent="Team should be here. Enable GPS to compare.";
+    dist.textContent=""; mStatus.textContent="GPS off"; mStatusDot.style.background="#9aa7b4";
+  } else if(t < T0){
+    card.className="idle"; word.textContent="Pre-race";
+    big.textContent=fmtMS(T0-t); sub.textContent="until gun start ("+secToClock(T0)+")";
+    dist.textContent=""; mStatus.textContent="Pre-race"; mStatusDot.style.background="#9aa7b4";
+  } else if(t >= Tf){
+    card.className="idle"; word.textContent="Course closed";
+    big.textContent="✓"; sub.textContent="Sweep complete — finish was "+secToClock(Tf);
+    dist.textContent=""; mStatus.textContent="Closed"; mStatusDot.style.background="#9aa7b4";
+  } else {
+    // behind (positive) = now later than scheduled-at-your-position
+    const behindSec = t - schedTimeAtKm(myKm);
+    const distDeltaM = (ghostKm - myKm)*1000; // positive => behind by this many course-metres
+    const tol=cfg.tol;
+    let kind, label;
+    if(Math.abs(behindSec)<=tol){ kind="ontrack"; label="On track"; }
+    else if(behindSec>0){ kind="behind"; label="Behind"; }
+    else{ kind="ahead"; label="Ahead"; }
+    card.className=kind; word.textContent=label; big.textContent=fmtMS(behindSec);
+    sub.textContent = kind==="ontrack" ? "Holding the pace — nice."
+      : kind==="behind" ? "Pick it up — you're falling back" : "Ease up — you're ahead of pace";
+    const dm=Math.abs(Math.round(distDeltaM));
+    dist.textContent = kind==="ontrack" ? "within "+dm+" m of the line"
+      : (behindSec>0? dm+" m behind the turtle line" : dm+" m ahead of the turtle line");
+    mStatus.textContent = label+" "+fmtMS(behindSec);
+    mStatusDot.style.background = kind==="behind"?"#d8232a":kind==="ahead"?"#1769c9":"#1a9e4b";
+  }
+  mStatusDot.style.borderRadius="50%";
+}
+
+function fmtKm(km){ return km.toFixed(2)+" <small>km · "+(km/1.60934).toFixed(2)+" mi</small>"; }
+function fmtKmPlain(km){ return km.toFixed(2)+" km"; }
+function paceStr(spk){ if(!isFinite(spk)||spk>3600) return "<small>—</small>"; return fmtMS(spk)+" <small>/km · "+fmtMS(spk*1.60934)+" /mi</small>"; }
+
+/* ---------------- schedule table ---------------- */
+function renderSchedule(){
+  const t=nowSec();
+  const body=document.getElementById("schedBody");
+  const nextCp = G.checkpoints.find(c=> schedTimeAtKm(c.km) > t+0.001);
+  body.innerHTML = G.checkpoints.map(c=>{
+    const st=schedTimeAtKm(c.km);
+    const cls = (nextCp && c===nextCp) ? "next" : (st<=t? "passed":"");
+    const pill = c.type==="special"? '<span class="pill" style="background:var(--special)">A&F</span>':"";
+    return `<tr class="${cls}">
+      <td class="nm"><span class="cpdot" style="background:${TYPE_HEX[c.type]||'#888'}"></span>${c.name}${pill}</td>
+      <td class="ds">${c.km.toFixed(2)}km</td>
+      <td class="tm">${secToClock(st)}</td></tr>`;
+  }).join("");
+  const a=anchors();
+  document.getElementById("schedNote").textContent =
+    `Start ${secToClock(a.T0)} · Arapahoe & Folsom ${secToClock(a.Ts)} · Finish ${secToClock(a.Tf)}. `+
+    `Pace ${fmtMS(paceAtKm(0))}/km then ${fmtMS(paceAtKm(9.9))}/km after Arapahoe & Folsom.`;
+}
+
+/* ---------------- settings wiring ---------------- */
+function fillSettings(){
+  document.getElementById("cfgStart").value=cfg.startTime;
+  document.getElementById("cfgSpecial").value=cfg.specialTime;
+  document.getElementById("cfgFinish").value=cfg.finishTime;
+  document.getElementById("cfgTol").value=cfg.tol;
+  document.getElementById("cfgSim").checked=cfg.sim;
+  document.getElementById("cfgSimTime").value=cfg.simTime;
+  document.getElementById("cfgRoute").value=cfg.routeText||"";
+  document.getElementById("simTimeField").style.display = cfg.sim? "block":"none";
+  updateStatusInfo();
+}
+function updateStatusInfo(){
+  const wl = ("wakeLock" in navigator)? (wakeLock? "screen locked awake":"supported") : "not supported";
+  const secure = window.isSecureContext? "secure (HTTPS) ✓" : "NOT secure — GPS may be blocked on iOS";
+  document.getElementById("statusInfo").innerHTML =
+    `Digitized course length: ${(G.L/1000).toFixed(2)} km (placed as 10.00 km).<br>`+
+    `Arapahoe &amp; Folsom at ${(G.specialDistM/G.L*10).toFixed(2)} km of course.<br>`+
+    `Geolocation: ${gpsSupported()?"available":"unavailable"} · Wake lock: ${wl}.<br>`+
+    `Page context: ${secure}.`;
+}
+function applyCfgFromInputs(){
+  const s=hmsToSec(document.getElementById("cfgStart").value),
+        sp=hmsToSec(document.getElementById("cfgSpecial").value),
+        f=hmsToSec(document.getElementById("cfgFinish").value);
+  if(s!=null) cfg.startTime=document.getElementById("cfgStart").value;
+  if(sp!=null) cfg.specialTime=document.getElementById("cfgSpecial").value;
+  if(f!=null) cfg.finishTime=document.getElementById("cfgFinish").value;
+  const tol=parseInt(document.getElementById("cfgTol").value,10);
+  if(!isNaN(tol)) cfg.tol=Math.max(5,Math.min(600,tol));
+  saveCfg(); render(); renderSchedule();
+}
+
+/* parse pasted route: GeoJSON LineString or "lat,lng" lines; #AF marks special */
+function parseRouteText(txt){
+  txt=(txt||"").trim(); if(!txt) return null;
+  // try GeoJSON
+  try{
+    const j=JSON.parse(txt);
+    let coords=null;
+    if(j.type==="LineString") coords=j.coordinates;
+    else if(j.type==="Feature" && j.geometry && j.geometry.type==="LineString") coords=j.geometry.coordinates;
+    else if(j.type==="FeatureCollection"){ const ft=j.features.find(f=>f.geometry&&f.geometry.type==="LineString"); if(ft) coords=ft.geometry.coordinates; }
+    if(coords){ const pts=coords.map(c=>[c[1],c[0]]); return {pts, specialIndex: nearestSpecial(pts)}; }
+  }catch(e){}
+  // plain lat,lng lines
+  const pts=[]; let special=-1;
+  txt.split(/\r?\n/).forEach(line=>{
+    const af=/#af/i.test(line);
+    const m=line.replace(/#.*$/,"").split(",").map(s=>parseFloat(s.trim()));
+    if(m.length>=2 && isFinite(m[0]) && isFinite(m[1])){ if(af) special=pts.length; pts.push([m[0],m[1]]); }
+  });
+  if(pts.length<2) return null;
+  return {pts, specialIndex: special>=0? special : nearestSpecial(pts)};
+}
+// fall back: choose vertex closest to Arapahoe & Folsom (~40.0143,-105.2586)
+function nearestSpecial(pts){
+  let bi=Math.floor(pts.length*0.88), bd=Infinity;
+  pts.forEach((p,i)=>{ const d=Math.hypot(p[0]-40.0143,p[1]+105.2586); if(d<bd){bd=d;bi=i;} });
+  return bi;
+}
+function rebuildGeometry(){
+  let route=BUILTIN_ROUTE, si=BUILTIN_SPECIAL_INDEX;
+  if(cfg.routeText){ const r=parseRouteText(cfg.routeText); if(r){ route=r.pts; si=r.specialIndex; } }
+  G=buildGeometry(route, si);
+  if(mapReady){ drawCourse(); fitCourse(); }
+}
+
+/* ---------------- nav ---------------- */
+function showView(v){
+  document.querySelectorAll(".view").forEach(s=>s.classList.toggle("active", s.id==="view-"+v));
+  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active", b.dataset.v===v));
+  if(v==="map"){ initMap(); setTimeout(()=>{ if(map) map.invalidateSize(); },60); }
+  if(v==="sched") renderSchedule();
+  if(v==="set"){ fillSettings(); }
+}
+
+/* ---------------- boot ---------------- */
+function boot(){
+  rebuildGeometry();
+
+  document.querySelectorAll("#nav button").forEach(b=> b.addEventListener("click",()=>showView(b.dataset.v)));
+  document.getElementById("enableGps").addEventListener("click", enableGps);
+  document.getElementById("recenter").addEventListener("click",()=>{ fitCourse(); });
+  document.getElementById("followBtn").addEventListener("click",function(){ follow=!follow; this.classList.toggle("on",follow); if(follow&&gps&&map) map.panTo([gps.lat,gps.lng]); });
+
+  ["cfgStart","cfgSpecial","cfgFinish","cfgTol"].forEach(id=>
+    document.getElementById(id).addEventListener("change", applyCfgFromInputs));
+
+  document.getElementById("cfgSim").addEventListener("change",function(){
+    cfg.sim=this.checked; simRunning=false; saveCfg();
+    document.getElementById("simTimeField").style.display=cfg.sim?"block":"none";
+    render(); renderSchedule();
+  });
+  document.getElementById("cfgSimTime").addEventListener("change",function(){
+    cfg.simTime=this.value; simRunning=false; saveCfg(); render(); renderSchedule();
+  });
+  document.getElementById("simStartBtn").addEventListener("click",()=>{
+    cfg.simTime=cfg.startTime; simRunning=false; saveCfg(); fillSettings(); render();
+  });
+  document.getElementById("simRunBtn").addEventListener("click",function(){
+    if(!cfg.sim) return;
+    if(simRunning){ simRunning=false; cfg.simTime=secToClock(nowSec()); saveCfg(); this.textContent="Run ▶"; fillSettings(); }
+    else { simBaseSec=hmsToSec(cfg.simTime)??0; simBaseWall=performance.now(); simRunning=true; this.textContent="Pause ⏸"; }
+  });
+
+  document.getElementById("routeApply").addEventListener("click",()=>{
+    const txt=document.getElementById("cfgRoute").value;
+    const r=parseRouteText(txt);
+    if(txt.trim() && !r){ alert("Could not parse route. Use a GeoJSON LineString or lines of: lat,lng"); return; }
+    cfg.routeText=txt; saveCfg(); rebuildGeometry(); render(); renderSchedule(); updateStatusInfo();
+    alert("Route applied ("+G.pts.length+" points).");
+  });
+  document.getElementById("routeReset").addEventListener("click",()=>{
+    cfg.routeText=""; document.getElementById("cfgRoute").value=""; saveCfg(); rebuildGeometry(); render(); renderSchedule(); updateStatusInfo();
+  });
+  document.getElementById("resetCfg").addEventListener("click",()=>{
+    if(confirm("Reset all settings to defaults?")){ cfg=Object.assign({},DEFAULT_CFG); saveCfg(); rebuildGeometry(); fillSettings(); render(); renderSchedule(); }
+  });
+
+  render(); renderSchedule();
+  setInterval(()=>{ render(); if(document.getElementById("view-sched").classList.contains("active")) renderSchedule(); }, 500);
+}
+boot();
+</script>
+</body>
+</html>
