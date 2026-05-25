@@ -361,7 +361,7 @@ const MILE_M = 1609.344;
 const CFG_KEY = "bb10k-turtle-cfg-v1";
 const DEFAULT_CFG = {
   startTime:"09:22:20", specialTime:"11:25:00", finishTime:"11:40:00",
-  tol:45, sim:false, simTime:"09:22:20", routeText:""
+  tol:15, sim:false, simTime:"09:22:20", routeText:""
 };
 let cfg = loadCfg();
 function loadCfg(){ try{ return Object.assign({}, DEFAULT_CFG, JSON.parse(localStorage.getItem(CFG_KEY)||"{}")); }catch(e){ return Object.assign({},DEFAULT_CFG);} }
